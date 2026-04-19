@@ -1,0 +1,833 @@
+<!DOCTYPE html>
+
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>POLYMARKET BOT SCANNER</title>
+<link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Orbitron:wght@400;700;900&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #030508;
+    --surface: #080d14;
+    --border: #0f2a1a;
+    --green: #00ff88;
+    --green-dim: #00cc6a;
+    --green-ghost: rgba(0,255,136,0.07);
+    --amber: #ffaa00;
+    --red: #ff3355;
+    --cyan: #00e5ff;
+    --text: #b0c4b1;
+    --text-dim: #4a6a4f;
+    --font-mono: 'Share Tech Mono', monospace;
+    --font-display: 'Orbitron', sans-serif;
+  }
+
+- { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+background: var(–bg);
+color: var(–text);
+font-family: var(–font-mono);
+min-height: 100vh;
+overflow-x: hidden;
+}
+
+/* scanlines overlay */
+body::before {
+content: ‘’;
+position: fixed;
+inset: 0;
+background: repeating-linear-gradient(
+0deg,
+transparent,
+transparent 2px,
+rgba(0,255,136,0.015) 2px,
+rgba(0,255,136,0.015) 4px
+);
+pointer-events: none;
+z-index: 9999;
+}
+
+header {
+border-bottom: 1px solid var(–border);
+padding: 20px 24px 16px;
+display: flex;
+align-items: center;
+justify-content: space-between;
+gap: 12px;
+flex-wrap: wrap;
+}
+
+.logo {
+font-family: var(–font-display);
+font-size: 13px;
+font-weight: 900;
+color: var(–green);
+letter-spacing: 3px;
+text-shadow: 0 0 20px rgba(0,255,136,0.4);
+line-height: 1.3;
+}
+.logo span { color: var(–text-dim); font-weight: 400; font-size: 10px; display: block; letter-spacing: 2px; margin-top: 2px; }
+
+.status-bar {
+display: flex;
+align-items: center;
+gap: 16px;
+flex-wrap: wrap;
+}
+
+.pulse {
+width: 8px; height: 8px;
+background: var(–green);
+border-radius: 50%;
+box-shadow: 0 0 8px var(–green);
+animation: pulse 2s infinite;
+flex-shrink: 0;
+}
+.pulse.idle { background: var(–amber); box-shadow: 0 0 8px var(–amber); animation: none; }
+.pulse.scanning { background: var(–cyan); box-shadow: 0 0 8px var(–cyan); animation: pulse 0.5s infinite; }
+
+@keyframes pulse {
+0%,100% { opacity: 1; }
+50% { opacity: 0.2; }
+}
+
+.status-text { font-size: 11px; color: var(–text-dim); }
+.status-text strong { color: var(–green); }
+
+.btn {
+font-family: var(–font-mono);
+font-size: 11px;
+padding: 7px 16px;
+border: 1px solid var(–green);
+background: transparent;
+color: var(–green);
+cursor: pointer;
+letter-spacing: 1px;
+transition: all 0.2s;
+text-transform: uppercase;
+}
+.btn:hover { background: var(–green); color: var(–bg); box-shadow: 0 0 20px rgba(0,255,136,0.3); }
+.btn:disabled { opacity: 0.3; cursor: not-allowed; }
+.btn-sm { padding: 4px 10px; font-size: 10px; }
+
+/* stats row */
+.stats-row {
+display: grid;
+grid-template-columns: repeat(4, 1fr);
+border-bottom: 1px solid var(–border);
+}
+.stat {
+padding: 14px 20px;
+border-right: 1px solid var(–border);
+}
+.stat:last-child { border-right: none; }
+.stat-val {
+font-family: var(–font-display);
+font-size: 22px;
+font-weight: 700;
+color: var(–green);
+text-shadow: 0 0 12px rgba(0,255,136,0.3);
+}
+.stat-val.amber { color: var(–amber); text-shadow: 0 0 12px rgba(255,170,0,0.3); }
+.stat-val.cyan { color: var(–cyan); text-shadow: 0 0 12px rgba(0,229,255,0.3); }
+.stat-label { font-size: 9px; color: var(–text-dim); letter-spacing: 2px; margin-top: 3px; text-transform: uppercase; }
+
+/* filters */
+.filters {
+padding: 12px 20px;
+display: flex;
+gap: 8px;
+flex-wrap: wrap;
+border-bottom: 1px solid var(–border);
+align-items: center;
+}
+.filter-label { font-size: 10px; color: var(–text-dim); letter-spacing: 1px; margin-right: 4px; }
+.chip {
+font-family: var(–font-mono);
+font-size: 10px;
+padding: 4px 12px;
+border: 1px solid var(–border);
+background: transparent;
+color: var(–text-dim);
+cursor: pointer;
+letter-spacing: 1px;
+transition: all 0.15s;
+}
+.chip.active { border-color: var(–green); color: var(–green); background: var(–green-ghost); }
+.chip:hover:not(.active) { border-color: #1a3a25; color: var(–text); }
+
+/* log terminal */
+.log-panel {
+background: #050a08;
+border-bottom: 1px solid var(–border);
+padding: 10px 20px;
+height: 72px;
+overflow-y: auto;
+font-size: 10px;
+}
+.log-line { color: var(–text-dim); line-height: 1.8; }
+.log-line .ts { color: #1a4a2a; margin-right: 8px; }
+.log-line .msg { }
+.log-line.info .msg { color: var(–green-dim); }
+.log-line.warn .msg { color: var(–amber); }
+.log-line.found .msg { color: var(–green); font-weight: bold; }
+.log-line.error .msg { color: var(–red); }
+
+/* main grid */
+.main { padding: 16px; }
+
+.section-title {
+font-size: 10px;
+letter-spacing: 3px;
+color: var(–text-dim);
+text-transform: uppercase;
+margin-bottom: 12px;
+display: flex;
+align-items: center;
+gap: 10px;
+}
+.section-title::after { content: ‘’; flex: 1; height: 1px; background: var(–border); }
+
+/* repo cards */
+.repo-grid { display: flex; flex-direction: column; gap: 8px; }
+
+.repo-card {
+background: var(–surface);
+border: 1px solid var(–border);
+padding: 14px 16px;
+cursor: pointer;
+transition: border-color 0.2s, background 0.2s;
+animation: fadeIn 0.4s ease both;
+}
+.repo-card:hover { border-color: #1a4a2e; background: #0a1410; }
+.repo-card.verified { border-left: 2px solid var(–green); }
+.repo-card.partial { border-left: 2px solid var(–amber); }
+.repo-card.none { border-left: 2px solid #1a2a1a; }
+
+@keyframes fadeIn {
+from { opacity: 0; transform: translateY(6px); }
+to { opacity: 1; transform: translateY(0); }
+}
+
+.card-top {
+display: flex;
+align-items: flex-start;
+justify-content: space-between;
+gap: 12px;
+flex-wrap: wrap;
+}
+
+.repo-name {
+font-size: 13px;
+color: var(–green);
+font-family: var(–font-mono);
+}
+.repo-name a { color: inherit; text-decoration: none; }
+.repo-name a:hover { text-decoration: underline; }
+.repo-author { font-size: 10px; color: var(–text-dim); margin-top: 2px; }
+
+.score-badge {
+font-family: var(–font-display);
+font-size: 11px;
+font-weight: 700;
+padding: 3px 10px;
+border: 1px solid;
+white-space: nowrap;
+flex-shrink: 0;
+}
+.score-badge.high { border-color: var(–green); color: var(–green); background: rgba(0,255,136,0.06); }
+.score-badge.med  { border-color: var(–amber); color: var(–amber); background: rgba(255,170,0,0.06); }
+.score-badge.low  { border-color: #1a2a1a; color: var(–text-dim); background: transparent; }
+
+.card-desc {
+font-size: 11px;
+color: var(–text-dim);
+margin-top: 8px;
+line-height: 1.6;
+max-width: 680px;
+}
+
+.card-meta {
+display: flex;
+gap: 16px;
+margin-top: 10px;
+flex-wrap: wrap;
+}
+.meta-item { font-size: 10px; color: var(–text-dim); display: flex; align-items: center; gap: 4px; }
+.meta-item span { color: var(–text); }
+
+.evidence-row {
+margin-top: 10px;
+display: flex;
+gap: 6px;
+flex-wrap: wrap;
+}
+.evidence-tag {
+font-size: 9px;
+padding: 2px 8px;
+letter-spacing: 1px;
+text-transform: uppercase;
+border: 1px solid;
+}
+.evidence-tag.polygon { border-color: #6644cc; color: #9977ff; background: rgba(102,68,204,0.08); }
+.evidence-tag.wallet  { border-color: var(–green); color: var(–green); background: var(–green-ghost); }
+.evidence-tag.pnl     { border-color: var(–amber); color: var(–amber); background: rgba(255,170,0,0.06); }
+.evidence-tag.readme  { border-color: var(–cyan); color: var(–cyan); background: rgba(0,229,255,0.06); }
+.evidence-tag.api     { border-color: #ff6688; color: #ff6688; background: rgba(255,102,136,0.06); }
+.evidence-tag.none    { border-color: #1a2a1a; color: var(–text-dim); }
+
+.card-links {
+margin-top: 10px;
+display: flex;
+gap: 8px;
+flex-wrap: wrap;
+}
+
+/* progress bar for score */
+.score-bar {
+height: 2px;
+background: #0a1a0f;
+margin-top: 10px;
+border-radius: 1px;
+overflow: hidden;
+}
+.score-fill {
+height: 100%;
+border-radius: 1px;
+transition: width 0.8s ease;
+}
+.score-fill.high { background: linear-gradient(90deg, var(–green-dim), var(–green)); }
+.score-fill.med  { background: linear-gradient(90deg, #cc8800, var(–amber)); }
+.score-fill.low  { background: #1a3a1a; }
+
+/* empty / loading states */
+.empty-state {
+text-align: center;
+padding: 60px 20px;
+color: var(–text-dim);
+}
+.empty-state .big { font-family: var(–font-display); font-size: 32px; color: #0a2a15; margin-bottom: 12px; }
+.empty-state p { font-size: 11px; line-height: 1.8; }
+
+.spinner {
+display: inline-block;
+width: 14px; height: 14px;
+border: 2px solid #0a2a15;
+border-top-color: var(–green);
+border-radius: 50%;
+animation: spin 0.8s linear infinite;
+vertical-align: middle;
+margin-right: 8px;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* countdown */
+.next-scan {
+font-size: 10px;
+color: var(–text-dim);
+padding: 8px 20px;
+border-top: 1px solid var(–border);
+display: flex;
+justify-content: space-between;
+align-items: center;
+flex-wrap: wrap;
+gap: 8px;
+}
+.countdown { color: var(–green-dim); font-family: var(–font-display); font-size: 11px; }
+
+/* detail modal */
+.modal-overlay {
+display: none;
+position: fixed;
+inset: 0;
+background: rgba(3,5,8,0.92);
+z-index: 1000;
+overflow-y: auto;
+padding: 20px;
+}
+.modal-overlay.open { display: flex; align-items: flex-start; justify-content: center; }
+.modal {
+background: var(–surface);
+border: 1px solid #1a3a22;
+max-width: 600px;
+width: 100%;
+margin-top: 40px;
+padding: 24px;
+box-shadow: 0 0 60px rgba(0,255,136,0.08);
+animation: fadeIn 0.2s ease;
+}
+.modal-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 16px; }
+.modal-title { font-size: 14px; color: var(–green); }
+.close-btn { background: none; border: none; color: var(–text-dim); font-size: 20px; cursor: pointer; line-height: 1; }
+.close-btn:hover { color: var(–red); }
+.modal-section { margin-top: 16px; }
+.modal-section-title { font-size: 10px; letter-spacing: 2px; color: var(–text-dim); text-transform: uppercase; margin-bottom: 8px; border-bottom: 1px solid var(–border); padding-bottom: 4px; }
+.modal-row { display: flex; justify-content: space-between; padding: 5px 0; border-bottom: 1px solid #080d10; font-size: 11px; }
+.modal-row .label { color: var(–text-dim); }
+.modal-row .val { color: var(–text); text-align: right; max-width: 60%; word-break: break-all; }
+.modal-row .val.green { color: var(–green); }
+.modal-row .val.amber { color: var(–amber); }
+.modal-row .val.red { color: var(–red); }
+
+/* responsive */
+@media (max-width: 480px) {
+.stats-row { grid-template-columns: repeat(2, 1fr); }
+.stat { border-bottom: 1px solid var(–border); }
+.logo { font-size: 11px; }
+}
+</style>
+
+</head>
+<body>
+
+<header>
+  <div class="logo">
+    POLYMARKET BOT SCANNER
+    <span>GITHUB INTELLIGENCE · ONCHAIN VERIFICATION</span>
+  </div>
+  <div class="status-bar">
+    <div class="pulse idle" id="statusDot"></div>
+    <div class="status-text" id="statusText">IDLE — PRESS SCAN TO BEGIN</div>
+    <button class="btn" id="scanBtn" onclick="startScan()">⟳ SCAN NOW</button>
+  </div>
+</header>
+
+<div class="stats-row">
+  <div class="stat">
+    <div class="stat-val" id="statTotal">0</div>
+    <div class="stat-label">Repos Found</div>
+  </div>
+  <div class="stat">
+    <div class="stat-val" id="statVerified">0</div>
+    <div class="stat-label">On-Chain Verified</div>
+  </div>
+  <div class="stat">
+    <div class="stat-val amber" id="statPartial">0</div>
+    <div class="stat-label">Partial Evidence</div>
+  </div>
+  <div class="stat">
+    <div class="stat-val cyan" id="statLast">—</div>
+    <div class="stat-label">Last Scan</div>
+  </div>
+</div>
+
+<div class="filters">
+  <span class="filter-label">FILTER:</span>
+  <button class="chip active" onclick="setFilter('all', this)">ALL</button>
+  <button class="chip" onclick="setFilter('verified', this)">✓ VERIFIED</button>
+  <button class="chip" onclick="setFilter('partial', this)">~ PARTIAL</button>
+  <button class="chip" onclick="setFilter('none', this)">✗ UNVERIFIED</button>
+  <button class="chip" onclick="setFilter('polygon', this)">POLYGONSCAN</button>
+  <button class="chip" onclick="setFilter('wallet', this)">WALLET ADDR</button>
+</div>
+
+<div class="log-panel" id="logPanel">
+  <div class="log-line"><span class="ts">[00:00:00]</span><span class="msg">System ready. Press SCAN NOW to begin GitHub search.</span></div>
+</div>
+
+<div class="main">
+  <div class="section-title">DISCOVERED REPOSITORIES</div>
+  <div class="repo-grid" id="repoGrid">
+    <div class="empty-state">
+      <div class="big">◈</div>
+      <p>No data yet.<br>Press <strong style="color:var(--green)">SCAN NOW</strong> to search GitHub for Polymarket bots<br>and detect on-chain evidence in their READMEs and source code.</p>
+    </div>
+  </div>
+</div>
+
+<div class="next-scan">
+  <span id="nextScanLabel">Next automatic scan: not scheduled</span>
+  <span class="countdown" id="countdown"></span>
+</div>
+
+<!-- Modal -->
+
+<div class="modal-overlay" id="modalOverlay" onclick="closeModal(event)">
+  <div class="modal" id="modalContent">
+    <div class="modal-header">
+      <div class="modal-title" id="modalTitle"></div>
+      <button class="close-btn" onclick="closeModalDirect()">✕</button>
+    </div>
+    <div id="modalBody"></div>
+  </div>
+</div>
+
+<script>
+// ─── STATE ───────────────────────────────────────────
+let allRepos = [];
+let activeFilter = 'all';
+let nextScanTimer = null;
+let countdownInterval = null;
+let nextScanAt = null;
+const SCAN_INTERVAL_MS = 24 * 60 * 60 * 1000; // 24h
+const GITHUB_API = 'https://api.github.com';
+
+// ─── SEARCH QUERIES ──────────────────────────────────
+const QUERIES = [
+  'polymarket bot trading',
+  'polymarket automated trading python',
+  'polymarket prediction market bot',
+  'polymarket api bot',
+  'polymarket trading strategy',
+];
+
+// On-chain evidence patterns
+const POLYGON_PATTERNS = [
+  /polygonscan\.com\/address\/0x[a-fA-F0-9]{40}/g,
+  /polygonscan\.com\/tx\/0x[a-fA-F0-9]{64}/g,
+  /polygon.*0x[a-fA-F0-9]{40}/gi,
+];
+const WALLET_PATTERNS = [
+  /0x[a-fA-F0-9]{40}/g,
+];
+const PNL_PATTERNS = [
+  /profit|loss|PnL|roi|return on investment|realized|unrealized/gi,
+  /\+[\d,]+\.?\d*\s*(USD|USDC|\$)/gi,
+];
+
+// ─── LOGGING ─────────────────────────────────────────
+function log(msg, type = '') {
+  const panel = document.getElementById('logPanel');
+  const now = new Date();
+  const ts = now.toTimeString().split(' ')[0];
+  const line = document.createElement('div');
+  line.className = `log-line ${type}`;
+  line.innerHTML = `<span class="ts">[${ts}]</span><span class="msg">${msg}</span>`;
+  panel.appendChild(line);
+  panel.scrollTop = panel.scrollHeight;
+}
+
+// ─── GITHUB FETCH ─────────────────────────────────────
+async function searchGitHub(query, page = 1) {
+  const url = `${GITHUB_API}/search/repositories?q=${encodeURIComponent(query)}&sort=updated&order=desc&per_page=10&page=${page}`;
+  try {
+    const res = await fetch(url, {
+      headers: { 'Accept': 'application/vnd.github.v3+json' }
+    });
+    if (res.status === 403) {
+      const reset = res.headers.get('X-RateLimit-Reset');
+      const wait = reset ? Math.ceil((reset * 1000 - Date.now()) / 1000) : 60;
+      log(`Rate limited. Retry in ${wait}s`, 'warn');
+      return null;
+    }
+    if (!res.ok) return null;
+    return await res.json();
+  } catch(e) {
+    log(`Network error: ${e.message}`, 'error');
+    return null;
+  }
+}
+
+async function fetchReadme(owner, repo) {
+  try {
+    const res = await fetch(`${GITHUB_API}/repos/${owner}/${repo}/readme`, {
+      headers: { 'Accept': 'application/vnd.github.v3.raw' }
+    });
+    if (!res.ok) return '';
+    return await res.text();
+  } catch { return ''; }
+}
+
+// ─── EVIDENCE ANALYSIS ───────────────────────────────
+function analyzeEvidence(repo, readme) {
+  const text = (readme + ' ' + (repo.description || '') + ' ' + repo.homepage).toLowerCase();
+  const fullText = readme + ' ' + (repo.description || '') + ' ' + (repo.homepage || '');
+
+  let evidence = [];
+  let score = 0;
+
+  // Check for PolygonScan links
+  const polygonMatches = fullText.match(/polygonscan\.com/gi) || [];
+  if (polygonMatches.length > 0) {
+    evidence.push('polygon');
+    score += 40;
+    log(`↳ PolygonScan link found in ${repo.full_name}`, 'found');
+  }
+
+  // Check for raw wallet addresses (0x...)
+  const walletMatches = fullText.match(/0x[a-fA-F0-9]{40}/g) || [];
+  const uniqueWallets = [...new Set(walletMatches)];
+  if (uniqueWallets.length > 0) {
+    evidence.push('wallet');
+    score += 30;
+  }
+
+  // Check for PnL / profit mentions
+  const pnlMatch = fullText.match(/profit|pnl|roi|\+\$|\+\d+\s*usdc/gi) || [];
+  if (pnlMatch.length > 0) {
+    evidence.push('pnl');
+    score += 15;
+  }
+
+  // Check README exists with meaningful content
+  if (readme.length > 300) {
+    evidence.push('readme');
+    score += 5;
+  }
+
+  // Check if it actually calls Polymarket API
+  const apiMatch = fullText.match(/clob-endpoint|polymarket\.com\/api|gamma-api|polymarket.*api|strapi\.polymarket/gi) || [];
+  if (apiMatch.length > 0) {
+    evidence.push('api');
+    score += 20;
+  }
+
+  // Extract actual wallet addresses for display
+  const walletAddrs = uniqueWallets.slice(0, 3);
+  const polygonUrls = (fullText.match(/https?:\/\/polygonscan\.com\/[^\s\)\"\']+/g) || []).slice(0, 3);
+
+  let verificationStatus = 'none';
+  if (score >= 50) verificationStatus = 'verified';
+  else if (score >= 20) verificationStatus = 'partial';
+
+  return { evidence, score, verificationStatus, walletAddrs, polygonUrls };
+}
+
+// ─── MAIN SCAN ────────────────────────────────────────
+async function startScan() {
+  const btn = document.getElementById('scanBtn');
+  const dot = document.getElementById('statusDot');
+  const statusText = document.getElementById('statusText');
+
+  btn.disabled = true;
+  dot.className = 'pulse scanning';
+  log('Starting GitHub scan for Polymarket bots...', 'info');
+
+  let discovered = [];
+  let seenIds = new Set(allRepos.map(r => r.id));
+
+  for (let i = 0; i < QUERIES.length; i++) {
+    const q = QUERIES[i];
+    statusText.textContent = `SCANNING: "${q}" (${i+1}/${QUERIES.length})`;
+    log(`Searching: "${q}"`, 'info');
+
+    const data = await searchGitHub(q);
+    if (!data) { await sleep(2000); continue; }
+
+    const items = (data.items || []).filter(r => !seenIds.has(r.id));
+    log(`Found ${items.length} new repos for query ${i+1}`, items.length > 0 ? 'found' : '');
+
+    for (const repo of items) {
+      if (seenIds.has(repo.id)) continue;
+      seenIds.add(repo.id);
+
+      log(`Analyzing ${repo.full_name}...`);
+      statusText.textContent = `FETCHING README: ${repo.full_name}`;
+
+      const readme = await fetchReadme(repo.owner.login, repo.name);
+      await sleep(300); // rate limit courtesy
+
+      const { evidence, score, verificationStatus, walletAddrs, polygonUrls } = analyzeEvidence(repo, readme);
+
+      discovered.push({
+        id: repo.id,
+        name: repo.name,
+        fullName: repo.full_name,
+        author: repo.owner.login,
+        description: repo.description || 'No description provided.',
+        url: repo.html_url,
+        stars: repo.stargazers_count,
+        forks: repo.forks_count,
+        language: repo.language || 'Unknown',
+        updatedAt: repo.updated_at,
+        topics: repo.topics || [],
+        evidence,
+        score,
+        verificationStatus,
+        walletAddrs,
+        polygonUrls,
+        readme: readme.slice(0, 800),
+      });
+    }
+
+    await sleep(1500); // between queries
+  }
+
+  // Merge with existing, deduplicate, sort by score
+  const merged = [...allRepos];
+  for (const r of discovered) {
+    const idx = merged.findIndex(x => x.id === r.id);
+    if (idx >= 0) merged[idx] = r;
+    else merged.push(r);
+  }
+  merged.sort((a, b) => b.score - a.score);
+  allRepos = merged;
+
+  updateStats();
+  renderRepos();
+
+  const now = new Date();
+  document.getElementById('statLast').textContent = now.toTimeString().split(' ')[0];
+  statusText.textContent = `COMPLETE — ${discovered.length} new repos found`;
+  dot.className = 'pulse idle';
+  btn.disabled = false;
+
+  log(`Scan complete. Total repos: ${allRepos.length}, New this scan: ${discovered.length}`, 'found');
+
+  scheduleNextScan();
+}
+
+// ─── SCHEDULE ─────────────────────────────────────────
+function scheduleNextScan() {
+  if (nextScanTimer) clearTimeout(nextScanTimer);
+  if (countdownInterval) clearInterval(countdownInterval);
+
+  nextScanAt = Date.now() + SCAN_INTERVAL_MS;
+  document.getElementById('nextScanLabel').textContent = 'Next automatic scan in:';
+
+  nextScanTimer = setTimeout(() => startScan(), SCAN_INTERVAL_MS);
+
+  countdownInterval = setInterval(() => {
+    const remaining = nextScanAt - Date.now();
+    if (remaining <= 0) { clearInterval(countdownInterval); return; }
+    const h = Math.floor(remaining / 3600000);
+    const m = Math.floor((remaining % 3600000) / 60000);
+    const s = Math.floor((remaining % 60000) / 1000);
+    document.getElementById('countdown').textContent =
+      `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+  }, 1000);
+}
+
+// ─── STATS ────────────────────────────────────────────
+function updateStats() {
+  document.getElementById('statTotal').textContent = allRepos.length;
+  document.getElementById('statVerified').textContent = allRepos.filter(r => r.verificationStatus === 'verified').length;
+  document.getElementById('statPartial').textContent = allRepos.filter(r => r.verificationStatus === 'partial').length;
+}
+
+// ─── FILTER ───────────────────────────────────────────
+function setFilter(f, el) {
+  activeFilter = f;
+  document.querySelectorAll('.chip').forEach(c => c.classList.remove('active'));
+  el.classList.add('active');
+  renderRepos();
+}
+
+function filteredRepos() {
+  if (activeFilter === 'all') return allRepos;
+  if (activeFilter === 'verified') return allRepos.filter(r => r.verificationStatus === 'verified');
+  if (activeFilter === 'partial') return allRepos.filter(r => r.verificationStatus === 'partial');
+  if (activeFilter === 'none') return allRepos.filter(r => r.verificationStatus === 'none');
+  if (activeFilter === 'polygon') return allRepos.filter(r => r.evidence.includes('polygon'));
+  if (activeFilter === 'wallet') return allRepos.filter(r => r.evidence.includes('wallet'));
+  return allRepos;
+}
+
+// ─── RENDER ───────────────────────────────────────────
+function renderRepos() {
+  const grid = document.getElementById('repoGrid');
+  const repos = filteredRepos();
+
+  if (repos.length === 0) {
+    grid.innerHTML = `<div class="empty-state"><div class="big">◈</div><p>No repositories match this filter.</p></div>`;
+    return;
+  }
+
+  grid.innerHTML = repos.map((r, i) => {
+    const scoreClass = r.score >= 50 ? 'high' : r.score >= 20 ? 'med' : 'low';
+    const scorePct = Math.min(100, r.score);
+    const updated = new Date(r.updatedAt).toLocaleDateString();
+
+    const evidenceTags = r.evidence.length > 0
+      ? r.evidence.map(e => `<span class="evidence-tag ${e}">${evidenceLabel(e)}</span>`).join('')
+      : `<span class="evidence-tag none">NO ONCHAIN EVIDENCE</span>`;
+
+    const polygonLinks = r.polygonUrls.slice(0,2).map(url =>
+      `<a class="btn btn-sm" href="${url}" target="_blank" rel="noopener">POLYGONSCAN ↗</a>`
+    ).join('');
+
+    return `
+    <div class="repo-card ${r.verificationStatus}" style="animation-delay:${i*0.04}s" onclick="openModal(${r.id})">
+      <div class="card-top">
+        <div>
+          <div class="repo-name"><a href="${r.url}" target="_blank" rel="noopener" onclick="event.stopPropagation()">${r.fullName}</a></div>
+          <div class="repo-author">by ${r.author} · ${r.language} · updated ${updated}</div>
+        </div>
+        <div class="score-badge ${scoreClass}">SCORE ${r.score}</div>
+      </div>
+      <div class="card-desc">${r.description}</div>
+      <div class="score-bar"><div class="score-fill ${scoreClass}" style="width:${scorePct}%"></div></div>
+      <div class="card-meta">
+        <div class="meta-item">★ <span>${r.stars}</span></div>
+        <div class="meta-item">⑂ <span>${r.forks}</span></div>
+        ${r.walletAddrs.length > 0 ? `<div class="meta-item">🔗 <span>${r.walletAddrs.length} wallet addr</span></div>` : ''}
+        ${r.polygonUrls.length > 0 ? `<div class="meta-item">✓ <span>${r.polygonUrls.length} polygonscan link</span></div>` : ''}
+      </div>
+      <div class="evidence-row">${evidenceTags}</div>
+      ${polygonLinks ? `<div class="card-links">${polygonLinks}</div>` : ''}
+    </div>`;
+  }).join('');
+}
+
+function evidenceLabel(e) {
+  return {
+    polygon: '◈ POLYGONSCAN',
+    wallet: '◉ WALLET ADDR',
+    pnl: '$ PNL DATA',
+    readme: '◻ README',
+    api: '⬡ API CALLS',
+  }[e] || e.toUpperCase();
+}
+
+// ─── MODAL ────────────────────────────────────────────
+function openModal(id) {
+  const r = allRepos.find(x => x.id === id);
+  if (!r) return;
+
+  document.getElementById('modalTitle').textContent = r.fullName;
+
+  const scoreClass = r.score >= 50 ? 'green' : r.score >= 20 ? 'amber' : 'red';
+  const walletList = r.walletAddrs.length > 0
+    ? r.walletAddrs.map(w => `<div class="modal-row"><span class="label">Wallet</span><span class="val green"><a href="https://polygonscan.com/address/${w}" target="_blank" style="color:var(--green)">${w.slice(0,10)}…${w.slice(-6)} ↗</a></span></div>`).join('')
+    : '<div class="modal-row"><span class="label">Wallets</span><span class="val red">None detected</span></div>';
+
+  const polygonList = r.polygonUrls.length > 0
+    ? r.polygonUrls.map(u => `<div class="modal-row"><span class="label">PolygonScan</span><span class="val"><a href="${u}" target="_blank" style="color:#9977ff">${u.slice(0,50)}… ↗</a></span></div>`).join('')
+    : '<div class="modal-row"><span class="label">PolygonScan</span><span class="val red">No links found</span></div>';
+
+  document.getElementById('modalBody').innerHTML = `
+    <div class="modal-section">
+      <div class="modal-section-title">Verification Score</div>
+      <div class="modal-row"><span class="label">Score</span><span class="val ${scoreClass}">${r.score} / 100</span></div>
+      <div class="modal-row"><span class="label">Status</span><span class="val ${scoreClass}">${r.verificationStatus.toUpperCase()}</span></div>
+    </div>
+    <div class="modal-section">
+      <div class="modal-section-title">On-Chain Evidence</div>
+      ${walletList}
+      ${polygonList}
+    </div>
+    <div class="modal-section">
+      <div class="modal-section-title">Repository Info</div>
+      <div class="modal-row"><span class="label">Stars</span><span class="val">${r.stars}</span></div>
+      <div class="modal-row"><span class="label">Forks</span><span class="val">${r.forks}</span></div>
+      <div class="modal-row"><span class="label">Language</span><span class="val">${r.language}</span></div>
+      <div class="modal-row"><span class="label">Topics</span><span class="val">${r.topics.join(', ') || '—'}</span></div>
+    </div>
+    ${r.readme ? `
+    <div class="modal-section">
+      <div class="modal-section-title">README Preview</div>
+      <div style="font-size:10px;color:var(--text-dim);line-height:1.7;margin-top:6px;white-space:pre-wrap;max-height:160px;overflow-y:auto">${r.readme.replace(/</g,'&lt;').replace(/>/g,'&gt;')}</div>
+    </div>` : ''}
+    <div style="margin-top:16px;display:flex;gap:8px;flex-wrap:wrap;">
+      <a href="${r.url}" target="_blank" rel="noopener" class="btn btn-sm">VIEW ON GITHUB ↗</a>
+    </div>
+  `;
+
+  document.getElementById('modalOverlay').classList.add('open');
+}
+
+function closeModal(e) {
+  if (e.target === document.getElementById('modalOverlay')) closeModalDirect();
+}
+function closeModalDirect() {
+  document.getElementById('modalOverlay').classList.remove('open');
+}
+
+// ─── UTILS ────────────────────────────────────────────
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+</script>
+
+</body>
+</html>
